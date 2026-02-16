@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Color Mapper</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #fff; color: #222; line-height: 1.5;
+    max-width: 960px; margin: 0 auto; padding: 24px 20px;
+  }
+  h1 { font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 14px; margin-bottom: 32px; }
+  /* Steps */
+  .steps { display: flex; gap: 8px; margin-bottom: 32px; }
+  .step-indicator {
+    flex: 1; padding: 10px 14px; border: 2px solid #e0e0e0;
+    border-radius: 8px; font-size: 13px; font-weight: 500; color: #999;
+    cursor: default; text-align: center; transition: all 0.2s;
+  }
+  .step-indicator.active { border-color: #333; color: #333; background: #f8f8f8; }
+  .step-indicator.done { border-color: #4caf50; color: #4caf50; background: #f0faf0; }
+  .step-section { display: none; }
+  .step-section.active { display: block; }
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed #ccc; border-radius: 12px; padding: 48px 24px;
+    text-align: center; cursor: pointer; transition: all 0.2s;
+    background: #fafafa;
+  }
+  .upload-zone:hover, .upload-zone.dragover { border-color: #666; background: #f0f0f0; }
+  .upload-zone p { color: #666; font-size: 15px; }
+  .upload-zone .browse { color: #2563eb; text-decoration: underline; cursor: pointer; }
+  /* File list */
+  .file-list { margin-top: 16px; }
+  .file-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; border: 1px solid #e8e8e8; border-radius: 8px;
+    margin-bottom: 8px; font-size: 14px;
+  }
+  .file-item .name { font-weight: 500; }
+  .file-item .spots { color: #666; font-size: 12px; }
+  .file-item .remove { color: #e53e3e; cursor: pointer; font-size: 18px; border: none; background: none; }
+  /* Inputs */
+  label { display: block; font-size: 13px; font-weight: 500; color: #555; margin-bottom: 4px; }
+  input[type="text"], input[type="number"] {
+    width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px;
+    font-size: 14px; outline: none; transition: border 0.2s;
+  }
+  input:focus { border-color: #666; }
+  .preview-box {
+    background: #f5f5f5; border-radius: 8px; padding: 12px 16px; margin-top: 8px;
+    font-family: monospace; font-size: 13px; color: #444; word-break: break-all;
+  }
+  /* Color table */
+  .color-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  .color-table th {
+    text-align: left; padding: 8px 10px; font-size: 12px; font-weight: 600;
+    color: #666; border-bottom: 2px solid #eee; text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .color-table td { padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }
+  .color-table input[type="number"] {
+    width: 70px; padding: 6px 8px; font-size: 13px; text-align: center;
+  }
+  .color-table .spot-name { font-weight: 500; font-size: 14px; }
+  .swatch {
+    display: inline-block; width: 20px; height: 20px; border-radius: 4px;
+    border: 1px solid #ddd; vertical-align: middle; margin-left: 6px;
+  }
+  /* Variants */
+  .variant-card {
+    border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px;
+    margin-bottom: 16px;
+  }
+  .variant-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
+  }
+  .variant-header h3 { font-size: 15px; font-weight: 600; }
+  /* Buttons */
+  .btn {
+    display: inline-block; padding: 10px 20px; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+  }
+  .btn-primary { background: #222; color: #fff; }
+  .btn-primary:hover { background: #444; }
+  .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+  .btn-secondary { background: #f0f0f0; color: #333; }
+  .btn-secondary:hover { background: #e0e0e0; }
+  .btn-danger { background: #fee; color: #c53030; }
+  .btn-danger:hover { background: #fdd; }
+  .btn-success { background: #48bb78; color: #fff; font-size: 16px; padding: 14px 28px; }
+  .btn-success:hover { background: #38a169; }
+  .btn-group { display: flex; gap: 8px; margin-top: 20px; }
+  /* Preset controls */
+  .preset-bar {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .preset-bar select {
+    padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px;
+    font-size: 13px; background: #fff; min-width: 180px;
+  }
+  /* Progress */
+  .progress-container { margin-top: 20px; }
+  .progress-bar-bg {
+    width: 100%; height: 8px; background: #eee; border-radius: 4px; overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; background: #222; border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+  }
+  .progress-text { font-size: 13px; color: #666; margin-top: 6px; }
+  /* Summary */
+  .summary-card {
+    background: #f8faf8; border: 1px solid #c6f6d5; border-radius: 10px;
+    padding: 20px; margin-top: 16px;
+  }
+  .summary-card h3 { font-size: 16px; margin-bottom: 8px; }
+  .summary-item { font-size: 14px; color: #444; padding: 2px 0; }
+  .summary-item .label { font-weight: 500; }
+  .warning { color: #c05621; }
+  /* Error */
+  .error-msg {
+    background: #fff5f5; border: 1px solid #feb2b2; color: #c53030;
+    border-radius: 8px; padding: 12px 16px; margin-top: 12px; font-size: 14px;
+    display: none;
+  }
+  .error-msg.visible { display: block; }
+  /* Helper */
+  .mt-12 { margin-top: 12px; }
+  .mt-16 { margin-top: 16px; }
+  .mt-24 { margin-top: 24px; }
+  .mb-8 { margin-bottom: 8px; }
+  .text-sm { font-size: 13px; }
+  .text-muted { color: #888; }
+  .hidden { display: none !important; }
+  .info-text { font-size: 13px; color: #666; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>PDF Color Mapper</h1>
+<p class="subtitle">Upload PDFs, map spot colors to CMYK, rename, and download.</p>
+
+<!-- Step indicators -->
+<div class="steps">
+  <div class="step-indicator active" data-step="1">1. Upload</div>
+  <div class="step-indicator" data-step="2">2. Name</div>
+  <div class="step-indicator" data-step="3">3. Map Colors</div>
+  <div class="step-indicator" data-step="4">4. Download</div>
+</div>
+
+<!-- Error display -->
+<div id="errorMsg" class="error-msg"></div>
+
+<!-- STEP 1: Upload -->
+<section id="step1" class="step-section active">
+  <div id="uploadZone" class="upload-zone">
+    <p>Drag and drop PDF files here</p>
+    <p>or <span class="browse">browse files</span></p>
+    <input type="file" id="fileInput" accept=".pdf" multiple style="display:none">
+  </div>
+  <div id="fileList" class="file-list"></div>
+  <div class="btn-group">
+    <button id="nextToStep2" class="btn btn-primary" disabled>Continue to Naming</button>
+  </div>
+</section>
+
+<!-- STEP 2: Naming -->
+<section id="step2" class="step-section">
+  <label for="namingPattern">Naming Pattern</label>
+  <input type="text" id="namingPattern" placeholder="2025_TNOW_###_Blue" value="output_###">
+  <p class="info-text">Use ### for auto-incrementing numbers (zero-padded). The color variant suffix is appended automatically.</p>
+  <div class="mt-16">
+    <label>Filename Preview</label>
+    <div id="namingPreview" class="preview-box">--</div>
+  </div>
+  <div class="btn-group">
+    <button class="btn btn-secondary" onclick="goToStep(1)">Back</button>
+    <button id="nextToStep3" class="btn btn-primary">Continue to Color Mapping</button>
+  </div>
+</section>
+
+<!-- STEP 3: Color Mapping -->
+<section id="step3" class="step-section">
+  <!-- Presets -->
+  <div class="preset-bar">
+    <select id="presetSelect"><option value="">-- Load a preset --</option></select>
+    <button class="btn btn-secondary" onclick="loadPreset()">Load</button>
+    <button class="btn btn-secondary" onclick="promptSavePreset()">Save Current as Preset</button>
+  </div>
+
+  <div id="noSpotsMsg" class="hidden" style="padding:20px;text-align:center;color:#888;">
+    No spot colors were found in the uploaded files. You can still add color variants manually.
+  </div>
+
+  <!-- Variant cards container -->
+  <div id="variantsContainer"></div>
+
+  <button class="btn btn-secondary mt-16" onclick="addVariant()">+ Add Color Variant</button>
+
+  <div class="btn-group">
+    <button class="btn btn-secondary" onclick="goToStep(2)">Back</button>
+    <button id="nextToStep4" class="btn btn-primary">Process Files</button>
+  </div>
+</section>
+
+<!-- STEP 4: Process & Download -->
+<section id="step4" class="step-section">
+  <div id="processingState">
+    <p style="font-size:15px;font-weight:500;">Processing your files...</p>
+    <div class="progress-container">
+      <div class="progress-bar-bg"><div id="progressFill" class="progress-bar-fill"></div></div>
+      <p id="progressText" class="progress-text">Starting...</p>
+    </div>
+  </div>
+
+  <div id="downloadState" class="hidden">
+    <div class="summary-card">
+      <h3>Processing Complete</h3>
+      <div id="summaryContent"></div>
+    </div>
+    <div class="mt-24" style="text-align:center;">
+      <button id="downloadBtn" class="btn btn-success">Download ZIP</button>
+    </div>
+    <div class="btn-group mt-16">
+      <button class="btn btn-secondary" onclick="resetAll()">Start Over</button>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ─── State ─── */
+let uploadedFiles = [];   // { file: File, filename: string, spotColors: string[] }
+let allSpotColors = [];
+let currentStep = 1;
+let zipBlob = null;
+let processingSummary = null;
+
+/* ─── Step Navigation ─── */
+function goToStep(n) {
+  currentStep = n;
+  document.querySelectorAll('.step-section').forEach(s => s.classList.remove('active'));
+  document.getElementById('step' + n).classList.add('active');
+  document.querySelectorAll('.step-indicator').forEach(ind => {
+    const s = parseInt(ind.dataset.step);
+    ind.classList.remove('active', 'done');
+    if (s === n) ind.classList.add('active');
+    else if (s < n) ind.classList.add('done');
+  });
+  hideError();
+}
+
+/* ─── Error Display ─── */
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+function hideError() {
+  document.getElementById('errorMsg').classList.remove('visible');
+}
+
+/* ─── STEP 1: Upload ─── */
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+async function handleFiles(fileList) {
+  hideError();
+  const newFiles = Array.from(fileList).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  if (newFiles.length === 0) { showError('Please upload PDF files only.'); return; }
+
+  // Upload to server for spot color detection
+  const formData = new FormData();
+  newFiles.forEach(f => formData.append('files', f));
+
+  try {
+    const resp = await fetch('/api/upload', { method: 'POST', body: formData });
+    if (!resp.ok) {
+      const err = await resp.json();
+      showError(err.detail || 'Upload failed.');
+      return;
+    }
+    const data = await resp.json();
+    data.files.forEach((info, i) => {
+      uploadedFiles.push({
+        file: newFiles[i],
+        filename: info.filename,
+        spotColors: info.spot_colors,
+      });
+    });
+    allSpotColors = [...new Set(uploadedFiles.flatMap(f => f.spotColors))].sort();
+    renderFileList();
+  } catch (e) {
+    showError('Could not connect to server. Please try again.');
+  }
+}
+
+function removeFile(index) {
+  uploadedFiles.splice(index, 1);
+  allSpotColors = [...new Set(uploadedFiles.flatMap(f => f.spotColors))].sort();
+  renderFileList();
+}
+
+function renderFileList() {
+  const container = document.getElementById('fileList');
+  container.innerHTML = uploadedFiles.map((f, i) => `
+    <div class="file-item">
+      <div>
+        <div class="name">${esc(f.filename)}</div>
+        <div class="spots">${f.spotColors.length ? 'Spots: ' + f.spotColors.map(esc).join(', ') : 'No spot colors detected'}</div>
+      </div>
+      <button class="remove" onclick="removeFile(${i})" title="Remove">&times;</button>
+    </div>
+  `).join('');
+  document.getElementById('nextToStep2').disabled = uploadedFiles.length === 0;
+}
+
+document.getElementById('nextToStep2').addEventListener('click', () => {
+  if (uploadedFiles.length === 0) return;
+  goToStep(2);
+  updateNamingPreview();
+});
+
+/* ─── STEP 2: Naming ─── */
+const namingInput = document.getElementById('namingPattern');
+namingInput.addEventListener('input', updateNamingPreview);
+
+function updateNamingPreview() {
+  const pattern = namingInput.value || 'output_###';
+  const hashes = (pattern.match(/#+/) || ['###'])[0].length;
+  const lines = [];
+  const maxPreview = Math.min(uploadedFiles.length, 3);
+  for (let i = 0; i < maxPreview; i++) {
+    const num = String(i + 1).padStart(hashes, '0');
+    const name = pattern.replace(/#+/, num);
+    lines.push(name + '_VariantName.pdf');
+  }
+  if (uploadedFiles.length > 3) lines.push('...');
+  document.getElementById('namingPreview').textContent = lines.join('\n');
+}
+
+document.getElementById('nextToStep3').addEventListener('click', () => {
+  goToStep(3);
+  initColorMapping();
+});
+
+/* ─── STEP 3: Color Mapping ─── */
+let variants = [];
+
+function initColorMapping() {
+  loadPresetsList();
+  if (variants.length === 0) {
+    // Create one default variant
+    addVariant();
+  }
+  if (allSpotColors.length === 0) {
+    document.getElementById('noSpotsMsg').classList.remove('hidden');
+  } else {
+    document.getElementById('noSpotsMsg').classList.add('hidden');
+  }
+}
+
+function addVariant() {
+  const id = variants.length;
+  const mappings = {};
+  allSpotColors.forEach(name => { mappings[name] = { c: 0, m: 0, y: 0, k: 0 }; });
+  variants.push({ suffix: 'Variant' + (id + 1), mappings });
+  renderVariants();
+}
+
+function removeVariant(index) {
+  variants.splice(index, 1);
+  renderVariants();
+}
+
+function renderVariants() {
+  const container = document.getElementById('variantsContainer');
+  container.innerHTML = variants.map((v, vi) => `
+    <div class="variant-card">
+      <div class="variant-header">
+        <div>
+          <label>Variant Suffix</label>
+          <input type="text" value="${esc(v.suffix)}" onchange="variants[${vi}].suffix=this.value" style="width:200px">
+        </div>
+        ${variants.length > 1 ? `<button class="btn btn-danger" onclick="removeVariant(${vi})">Remove</button>` : ''}
+      </div>
+      <table class="color-table">
+        <thead><tr><th>Spot Color</th><th>C</th><th>M</th><th>Y</th><th>K</th><th>Preview</th></tr></thead>
+        <tbody>
+          ${allSpotColors.map(spot => {
+            const m = v.mappings[spot] || { c: 0, m: 0, y: 0, k: 0 };
+            v.mappings[spot] = m;
+            return `<tr>
+              <td class="spot-name">${esc(spot)}</td>
+              <td><input type="number" min="0" max="1" step="0.01" value="${m.c}" onchange="updateMapping(${vi},'${escAttr(spot)}','c',this.value)"></td>
+              <td><input type="number" min="0" max="1" step="0.01" value="${m.m}" onchange="updateMapping(${vi},'${escAttr(spot)}','m',this.value)"></td>
+              <td><input type="number" min="0" max="1" step="0.01" value="${m.y}" onchange="updateMapping(${vi},'${escAttr(spot)}','y',this.value)"></td>
+              <td><input type="number" min="0" max="1" step="0.01" value="${m.k}" onchange="updateMapping(${vi},'${escAttr(spot)}','k',this.value)"></td>
+              <td><span class="swatch" id="swatch_${vi}_${spotId(spot)}" style="background:${cmykToRgb(m)}"></span></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `).join('');
+}
+
+function updateMapping(vi, spot, channel, val) {
+  const v = parseFloat(val);
+  if (isNaN(v)) return;
+  const clamped = Math.max(0, Math.min(1, v));
+  variants[vi].mappings[spot][channel] = clamped;
+  const m = variants[vi].mappings[spot];
+  const swatchEl = document.getElementById('swatch_' + vi + '_' + spotId(spot));
+  if (swatchEl) swatchEl.style.background = cmykToRgb(m);
+}
+
+function cmykToRgb(m) {
+  const r = Math.round(255 * (1 - m.c) * (1 - m.k));
+  const g = Math.round(255 * (1 - m.m) * (1 - m.k));
+  const b = Math.round(255 * (1 - m.y) * (1 - m.k));
+  return `rgb(${r},${g},${b})`;
+}
+
+function spotId(name) { return name.replace(/[^a-zA-Z0-9]/g, '_'); }
+
+/* ─── Presets ─── */
+async function loadPresetsList() {
+  try {
+    const resp = await fetch('/api/presets');
+    const data = await resp.json();
+    const select = document.getElementById('presetSelect');
+    select.innerHTML = '<option value="">-- Load a preset --</option>';
+    data.presets.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      opt.dataset.mappings = JSON.stringify(p.mappings);
+      select.appendChild(opt);
+    });
+  } catch (e) { /* ignore */ }
+}
+
+function loadPreset() {
+  const select = document.getElementById('presetSelect');
+  const opt = select.options[select.selectedIndex];
+  if (!opt || !opt.dataset.mappings) return;
+  const mappings = JSON.parse(opt.dataset.mappings);
+  // Apply to all variants
+  variants.forEach(v => {
+    Object.keys(mappings).forEach(spot => {
+      if (allSpotColors.includes(spot)) {
+        v.mappings[spot] = { ...mappings[spot] };
+      }
+    });
+  });
+  renderVariants();
+}
+
+function promptSavePreset() {
+  const name = prompt('Enter a name for this preset:');
+  if (!name) return;
+  // Combine all spot mappings from first variant
+  const mappings = variants.length > 0 ? variants[0].mappings : {};
+  fetch('/api/presets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mappings }),
+  }).then(r => r.json()).then(() => {
+    loadPresetsList();
+    alert('Preset saved!');
+  }).catch(() => showError('Failed to save preset.'));
+}
+
+document.getElementById('nextToStep4').addEventListener('click', () => {
+  if (variants.length === 0) { showError('Add at least one color variant.'); return; }
+  goToStep(4);
+  processFiles();
+});
+
+/* ─── STEP 4: Process ─── */
+async function processFiles() {
+  const processingEl = document.getElementById('processingState');
+  const downloadEl = document.getElementById('downloadState');
+  processingEl.classList.remove('hidden');
+  downloadEl.classList.add('hidden');
+  hideError();
+
+  // Animate progress
+  const fill = document.getElementById('progressFill');
+  const text = document.getElementById('progressText');
+  fill.style.width = '10%';
+  text.textContent = 'Preparing files...';
+
+  const pattern = namingInput.value || 'output_###';
+  const config = {
+    naming_pattern: pattern,
+    color_variants: variants.map(v => ({
+      suffix: v.suffix,
+      mappings: v.mappings,
+    })),
+  };
+
+  const formData = new FormData();
+  uploadedFiles.forEach(f => formData.append('files', f.file));
+  formData.append('config', JSON.stringify(config));
+
+  fill.style.width = '30%';
+  text.textContent = 'Uploading and processing...';
+
+  try {
+    const resp = await fetch('/api/process', { method: 'POST', body: formData });
+    fill.style.width = '80%';
+    text.textContent = 'Building ZIP...';
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      showError(err.detail || 'Processing failed.');
+      fill.style.width = '0%';
+      text.textContent = 'Failed.';
+      return;
+    }
+
+    const summaryHeader = resp.headers.get('X-Processing-Summary');
+    processingSummary = summaryHeader ? JSON.parse(summaryHeader) : null;
+
+    zipBlob = await resp.blob();
+    fill.style.width = '100%';
+    text.textContent = 'Done!';
+
+    // Show download
+    setTimeout(() => {
+      processingEl.classList.add('hidden');
+      downloadEl.classList.remove('hidden');
+      renderSummary();
+    }, 400);
+
+  } catch (e) {
+    showError('Processing failed. Please check your connection and try again.');
+    fill.style.width = '0%';
+    text.textContent = 'Error.';
+  }
+}
+
+function renderSummary() {
+  const el = document.getElementById('summaryContent');
+  if (!processingSummary) {
+    el.innerHTML = '<p class="summary-item">Files processed successfully.</p>';
+    return;
+  }
+  const s = processingSummary;
+  let html = `
+    <p class="summary-item"><span class="label">Files processed:</span> ${s.total_files_processed}</p>
+    <p class="summary-item"><span class="label">Output files generated:</span> ${s.total_outputs}</p>
+    <p class="summary-item"><span class="label">Spot colors mapped:</span> ${s.spots_replaced.length ? s.spots_replaced.join(', ') : 'None'}</p>
+  `;
+  if (s.spots_unmatched.length) {
+    html += `<p class="summary-item warning"><span class="label">Unmatched spots (left unchanged):</span> ${s.spots_unmatched.join(', ')}</p>`;
+  }
+  el.innerHTML = html;
+}
+
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  if (!zipBlob) return;
+  const url = URL.createObjectURL(zipBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'color_mapped_pdfs.zip';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+function resetAll() {
+  uploadedFiles = [];
+  allSpotColors = [];
+  variants = [];
+  zipBlob = null;
+  processingSummary = null;
+  renderFileList();
+  namingInput.value = 'output_###';
+  goToStep(1);
+}
+
+/* ─── Helpers ─── */
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+function escAttr(s) {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+</script>
+</body>
+</html>

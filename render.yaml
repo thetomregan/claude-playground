@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: pdf-color-mapper
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "50"
